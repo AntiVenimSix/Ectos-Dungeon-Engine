@@ -1,8 +1,7 @@
-print("You're using Ecto's Dungeon Generator version 0.1.0 Alpha! Please support me by subscribing to my YouTube channel @EctoPhasic and @PhasiCat!")
-
 import json
 import time
 import random
+import sys
 
 # Initialize Dungeon variables and lists
 editormode = False
@@ -20,6 +19,7 @@ life = 95
 maxlife = 100
 action = ""
 currentRoom = 0
+equipped_item = None
 
 # Function to create an enemy
 def createEnemy(mindamage, maxdamage, hp, name):
@@ -48,7 +48,7 @@ def createDungeon():
     print("Level saved")
 
 def decideAction(action):
-    global currentRoom, life, inventory
+    global currentRoom, life, inventory, equipped_item
 
     room = dungeon[currentRoom]
 
@@ -57,27 +57,30 @@ def decideAction(action):
             item = room["item"]
             inventory[item["idnum"]] = item
             print(f"You picked up {item['name']}.")
+            room["item"] = None
         else:
             print("No items in this room.")
     
     elif action == "2":  # Fight
         if room["enemies"]:
-            for enemy in room["enemies"]:
+            for enemy in list(room["enemies"]):
                 print(f"Fighting {enemy['name']} (HP: {enemy['hp']}, Damage: {enemy['mindamage']}-{enemy['maxdamage']})")
-                enemy_hp = enemy['hp']
-                while enemy_hp > 0 and life > 0:
-                    damage = random.randint(4, 6)  # Assuming player damage for simplicity
-                    enemy_hp -= damage
-                    print(f"You hit the {enemy['name']} for {damage} damage!")
-                    if enemy_hp <= 0:
+                while enemy['hp'] > 0 and life > 0:
+                    player_damage = random.randint(4, 6)
+                    if equipped_item:
+                        player_damage += equipped_item["damage"]
+                    enemy['hp'] -= player_damage
+                    print(f"You hit the {enemy['name']} for {player_damage} damage!")
+                    if enemy['hp'] <= 0:
                         print(f"You defeated the {enemy['name']}!")
+                        room["enemies"].remove(enemy)
                         break
                     enemy_damage = random.randint(enemy['mindamage'], enemy['maxdamage'])
                     life -= enemy_damage
                     print(f"The {enemy['name']} hits you for {enemy_damage} damage!")
                     if life <= 0:
                         print("You have been defeated! Game over!")
-                        exit()
+                        sys.exit()
             # After fight, heal player
             life = min(life + 10, maxlife)
             print(f"Health restored! Current health: {life}/{maxlife}")
@@ -87,8 +90,11 @@ def decideAction(action):
     elif action == "3":  # Enter Door
         if room["doors"]:
             next_room = random.choice(room["doors"])  # Choose a random door
-            print(f"You enter room {next_room}.")
-            currentRoom = next_room
+            if 0 <= next_room < len(dungeon):
+                print(f"You enter room {next_room}.")
+                currentRoom = next_room
+            else:
+                print("That door seems to be blocked.")
         else:
             print("There are no doors in this room.")
     
@@ -98,8 +104,13 @@ def decideAction(action):
             for item in inventory.values():
                 print(f"{item['name']} (Damage: {item['damage']})")
             equip_item = input("Enter item name to equip: ")
-            # Equip the item (just a placeholder here, could have effects)
-            print(f"You equipped {equip_item}.")
+            for item in inventory.values():
+                if item["name"] == equip_item:
+                    equipped_item = item
+                    print(f"You equipped {equip_item}.")
+                    break
+            else:
+                print("That item is not in your inventory.")
         else:
             print("No items in your inventory.")
     
@@ -134,31 +145,47 @@ def describeRoom():
     action = input("What do you want to do? (1, 2, 3, 4, 5, or 6): ")
     return action
 
-# If in editor mode, create dungeon and save
-if editormode:
-    createDungeon()
-    print("Dungeon file generated! Closing in 5 seconds...")
-    time.sleep(5)
-    exit()
+def load_dungeon(path):
+    print("Loading dungeon")
+    try:
+        with open(path, 'r') as file:
+            data = json.load(file)
+        dungeon_data = data["dungeon"]
+        item_data = data["items"]
+        enemy_data = data["enemies"]
+    except (OSError, json.JSONDecodeError, KeyError) as error:
+        print(f"Failed to load dungeon data: {error}")
+        sys.exit(1)
 
-# Load the data back from JSON file
-print("Loading dungeon")
-with open('example.json', 'r') as file:
-    data = json.load(file)
+    print("Loaded! Extracting data...")
+    return dungeon_data, item_data, enemy_data
 
-print("Loaded! Extracting data...")
-# Extract individual objects
-dungeon = data["dungeon"]
-items = data["items"]
-enemies = data["enemies"]
 
-print("Done! Finishing up...")
-if debug:
-    print("Dungeon:", dungeon)
-    print("Items:", items)
-    print("Enemies:", enemies)
+def main():
+    global dungeon, items, enemies
 
-# Main game loop
-while True:
-    action = describeRoom()
-    decideAction(action)
+    print("You're using Ecto's Dungeon Generator version 0.1.0 Alpha! Please support me by subscribing to my YouTube channel @EctoPhasic and @PhasiCat!")
+
+    # If in editor mode, create dungeon and save
+    if editormode:
+        createDungeon()
+        print("Dungeon file generated! Closing in 5 seconds...")
+        time.sleep(5)
+        sys.exit()
+
+    dungeon, items, enemies = load_dungeon('example.json')
+
+    print("Done! Finishing up...")
+    if debug:
+        print("Dungeon:", dungeon)
+        print("Items:", items)
+        print("Enemies:", enemies)
+
+    # Main game loop
+    while True:
+        action = describeRoom()
+        decideAction(action)
+
+
+if __name__ == "__main__":
+    main()
